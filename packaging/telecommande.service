@@ -1,0 +1,10 @@
+[Unit]
+Description=Télécommande de bureau (hôte)
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/telecommande-host --web-dir /usr/share/telecommande/web
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,16 @@
+:root { color-scheme: dark; --bg: #0b0d10; --fg: #e8eaed; --accent: #6ea8fe; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 16px system-ui, sans-serif; overflow: hidden; touch-action: none; overscroll-behavior: none; }
+#screen { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+#cursor { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.state { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg);
+  transition: opacity .25s; font-size: 1.1rem; padding: 24px; text-align: center; line-height: 1.4; }
+.state.off { opacity: 0; pointer-events: none; }
+.bar { position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 12px); display: flex; gap: 6px; padding: 8px;
+  background: rgba(20,24,30,.85); backdrop-filter: blur(12px); border-radius: 18px;
+  transition: opacity .25s, transform .25s; }
+.bar.hidden { opacity: 0; transform: translate(-50%, 20px); pointer-events: none; }
+.bar button { background: transparent; color: var(--fg); border: 0; padding: 10px 12px; border-radius: 12px; font: inherit; }
+.bar button:active { background: rgba(255,255,255,.12); }

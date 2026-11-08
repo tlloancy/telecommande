@@ -1,0 +1,2 @@
+# Accès à /dev/uinput pour le groupe dédié (le démon ne tourne jamais en root).
+KERNEL=="uinput", GROUP="telecommande", MODE="0660", OPTIONS+="static_node=uinput"

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0b0d10" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>Télécommande</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <video id="screen" autoplay playsinline muted></video>
+  <canvas id="cursor"></canvas>
+  <div id="state" class="state">Connexion…</div>
+  <nav id="bar" class="bar hidden" aria-label="Commandes">
+    <button data-act="keyboard">Clavier</button>
+    <button data-act="mods">Modif.</button>
+    <button data-act="shortcuts">Raccourcis</button>
+    <button data-act="mode">Mode</button>
+    <button data-act="quit">Quitter</button>
+  </nav>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
