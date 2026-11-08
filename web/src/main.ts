@@ -1,5 +1,6 @@
 import { Link, type Layout } from "./rtc";
 import { Trackpad } from "./gestures";
+import { attachKeyboard } from "./ui/keyboard";
 import { hitScreen, place, zoomAt, type Region } from "./view";
 
 // Le jeton arrive via le QR (#t=...) puis est mémorisé.
@@ -138,9 +139,11 @@ const closeKeys = () => {
   paintKeys(false);
   keys.blur();
 };
+const kb = attachKeyboard(keys, ev => link.send(ev));
 const openKeys = () => {
   keysOpen = true;
   paintKeys(true);
+  kb.reset();
   keys.focus({ preventScroll: true });
 };
 keypad.addEventListener("pointerdown", e => {
@@ -161,45 +164,6 @@ keys.addEventListener("blur", () => {
   if (pointingKeypad) return;
   keysOpen = false;
   paintKeys(false);
-});
-let composing = false;
-let busy = false;
-let echo = "";
-let echoAt = 0;
-const tapKey = (code: number) => {
-  link.send({ t: "key", code, down: true });
-  link.send({ t: "key", code, down: false });
-};
-const flush = () => {
-  if (busy || composing) return;
-  const s = keys.value;
-  if (!s) return;
-  const now = performance.now();
-  busy = true;
-  keys.value = "";
-  busy = false;
-  if (s === echo && s.length > 1 && now - echoAt < 500) return;
-  echo = s;
-  echoAt = now;
-  link.send({ t: "text", s });
-};
-keys.addEventListener("compositionstart", () => { composing = true; });
-keys.addEventListener("compositionend", () => {
-  composing = false;
-  flush();
-});
-keys.addEventListener("input", e => {
-  if ((e as InputEvent).isComposing || composing) return;
-  flush();
-});
-keys.addEventListener("beforeinput", e => {
-  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
-    tapKey(28);
-    e.preventDefault();
-  } else if (e.inputType === "deleteContentBackward" && !composing && !e.isComposing) {
-    tapKey(14);
-    e.preventDefault();
-  }
 });
 document.getElementById("screens")!.addEventListener("click", e => {
   const btn = (e.target as Element).closest("button");

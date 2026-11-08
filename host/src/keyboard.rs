@@ -29,32 +29,79 @@ struct Layout {
 
 static LAYOUT: Mutex<Option<Layout>> = Mutex::new(None);
 
-pub fn type_text(text: &str) -> Result<()> {
-    let (conn, _) = RustConnection::connect(None).context("connexion X11")?;
-    for ch in text.chars() {
-        if ch == '\n' || ch == '\r' {
-            tap(&conn, evdev_to_x(28))?;
-            continue;
+/// Connexion X11 gardée entre les frappes : s’en reconnecter une à chaque message coûte
+/// un aller-retour (connexion + QueryExtension XTest) par lettre, et les touches
+/// appuyées / relâchées partaient sur des connexions différentes.
+static CONN: Mutex<Option<RustConnection>> = Mutex::new(None);
+
+fn with_conn<T>(f: impl Fn(&RustConnection) -> Result<T>) -> Result<T> {
+    let mut slot = CONN.lock().unwrap_or_else(|e| e.into_inner());
+    let mut last = None;
+    for _ in 0..2 {
+        if slot.is_none() {
+            let (conn, _) = RustConnection::connect(None).context("connexion X11")?;
+            *slot = Some(conn);
         }
-        let seq = sequence_for(ch)?;
-        if seq.is_empty() {
-            tracing::debug!("aucune touche pour {ch:?}");
-            continue;
-        }
-        for chord in seq {
-            play(&conn, &chord)?;
+        let Some(conn) = slot.as_ref() else { continue };
+        match f(conn) {
+            Ok(v) => return Ok(v),
+            Err(err) => {
+                // Connexion probablement morte (session relancée) : on repart de zéro une fois.
+                tracing::debug!("X11 : reconnexion ({err})");
+                *slot = None;
+                last = Some(err);
+            }
         }
     }
-    conn.flush().context("flush")?;
-    Ok(())
+    Err(last.unwrap_or_else(|| anyhow!("connexion X11 indisponible")))
+}
+
+/// Caractères que Gboard insère mais que la disposition n’a pas : équivalent tapable.
+fn fallback(ch: char) -> &'static str {
+    match ch {
+        '\u{2018}' | '\u{2019}' | '\u{02bc}' => "'",
+        '\u{201c}' | '\u{201d}' | '\u{00ab}' | '\u{00bb}' => "\"",
+        '\u{2026}' => "...",
+        '\u{00a0}' | '\u{202f}' | '\u{2009}' | '\u{200b}' => " ",
+        '\u{2010}' | '\u{2011}' | '\u{2013}' | '\u{2014}' => "-",
+        _ => "",
+    }
+}
+
+pub fn type_text(text: &str) -> Result<()> {
+    with_conn(|conn| {
+        for ch in text.chars() {
+            if ch == '\n' || ch == '\r' {
+                tap(conn, evdev_to_x(28))?;
+                continue;
+            }
+            let mut seq = sequence_for(ch)?;
+            if seq.is_empty() {
+                for alt in fallback(ch).chars() {
+                    seq.extend(sequence_for(alt)?);
+                }
+            }
+            if seq.is_empty() {
+                // warn (et non debug) : un caractère perdu doit se voir dans les logs.
+                tracing::warn!("aucune touche pour {ch:?} (U+{:04X}), ignoré", u32::from(ch));
+                continue;
+            }
+            for chord in seq {
+                play(conn, &chord)?;
+            }
+        }
+        conn.flush().context("flush")?;
+        Ok(())
+    })
 }
 
 /// `code` est un keycode evdev (Retour arrière = 14, Entrée = 28).
 pub fn stroke(code: u16, down: bool) -> Result<()> {
-    let (conn, _) = RustConnection::connect(None).context("connexion X11")?;
-    stroke_x(&conn, evdev_to_x(code), down)?;
-    conn.flush().context("flush")?;
-    Ok(())
+    with_conn(|conn| {
+        stroke_x(conn, evdev_to_x(code), down)?;
+        conn.flush().context("flush")?;
+        Ok(())
+    })
 }
 
 fn evdev_to_x(code: u16) -> u8 {
@@ -248,5 +295,13 @@ mod tests {
         assert!(layout.chords.get(&'é').is_some());
         let hat = layout.sequence('â');
         assert!(hat.len() == 1 || hat.last().is_some_and(|c| c.key == a.key));
+    }
+
+    #[test]
+    fn typographic_characters_fall_back_to_typable_ones() {
+        assert_eq!(fallback('\u{2019}'), "'");
+        assert_eq!(fallback('\u{2026}'), "...");
+        assert_eq!(fallback('\u{202f}'), " ");
+        assert_eq!(fallback('a'), "");
     }
 }
