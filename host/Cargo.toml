@@ -18,6 +18,10 @@ gstreamer-webrtc = "0.23"
 futures-util = "0.3"
 # Entrées uinput (phase 3)
 evdev = "0.12"
+# Placer le curseur (warp) et taper au clavier (XTest).
+x11rb = { version = "0.13", features = ["xtest"] }
+# Disposition du clavier : une lettre devient le bon keycode (AZERTY compris).
+xkbcommon = "0.7"
 # Appairage : jeton aléatoire, QR terminal, certificat auto-signé
 rand = "0.8"
 hex = "0.4"

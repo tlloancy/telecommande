@@ -3,7 +3,9 @@ mod capture;
 mod clipboard;
 mod encoder;
 mod input;
+mod keyboard;
 mod pairing;
+mod screens;
 mod server;
 
 use capture::CaptureOpts;

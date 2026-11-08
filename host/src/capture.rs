@@ -200,8 +200,8 @@ fn start_with(enc: Encoder, opts: CaptureOpts, tx: UnboundedSender<HostSignal>) 
     // Canaux créés avant la négociation, sinon ils manquent à l'offre SDP.
     let move_ch = make_channel(&webrtc, "move", true)?;
     let ctrl_ch = make_channel(&webrtc, "ctrl", false)?;
-    attach_input(&move_ch);
-    attach_input(&ctrl_ch);
+    attach_input(&move_ch, false);
+    attach_input(&ctrl_ch, true);
 
     let inner = Arc::new(Mutex::new(WebrtcInner {
         webrtc: webrtc.clone(),
@@ -261,16 +261,39 @@ fn make_channel(webrtc: &gst::Element, name: &str, unreliable: bool) -> Result<g
         .with_context(|| format!("DataChannel {name}"))
 }
 
-fn attach_input(channel: &gst::glib::Object) {
+fn attach_input(channel: &gst::glib::Object, reliable: bool) {
+    if reliable {
+        channel.connect("on-open", false, |vals| {
+            send_layout(vals);
+            None
+        });
+    }
     channel.connect("on-message-string", false, move |vals| {
         let Ok(text) = vals[1].get::<String>() else {
             return None;
         };
         if let Ok(ev) = serde_json::from_str::<input::InputEvent>(&text) {
+            if reliable && matches!(ev, input::InputEvent::Hello) {
+                send_layout(vals);
+            }
             input::handle(ev);
         }
         None
     });
+}
+
+fn send_layout(vals: &[gst::glib::Value]) {
+    let json = match crate::screens::layout_message() {
+        Ok(json) => json,
+        Err(err) => {
+            tracing::warn!("écrans illisibles : {err}");
+            return;
+        }
+    };
+    let Some(channel) = vals.first().and_then(|v| v.get::<gst::glib::Object>().ok()) else {
+        return;
+    };
+    channel.emit_by_name::<()>("send-string", &[&Some(json.as_str())]);
 }
 
 fn connect_signals(webrtc: &gst::Element, tx: &UnboundedSender<HostSignal>) {

@@ -1,7 +1,13 @@
-// Barre flottante qui se masque seule.
+// La barre s'ouvre et se ferme sur le sigle. Aucun délai.
 export function setupBar(el: HTMLElement, onAction: (a: string) => void) {
-  let timer: number | undefined;
-  const show = () => { el.classList.remove("hidden"); clearTimeout(timer); timer = window.setTimeout(() => el.classList.add("hidden"), 3500); };
-  el.addEventListener("click", e => { const a = (e.target as HTMLElement).dataset.act; if (a) { onAction(a); show(); } });
-  return show;
+  let open = false;
+  const paint = () => el.classList.toggle("hidden", !open);
+  el.addEventListener("click", e => {
+    const btn = (e.target as Element).closest("button");
+    const act = btn?.dataset.act;
+    if (act) onAction(act);
+  });
+  return {
+    toggle() { open = !open; paint(); return open; },
+  };
 }

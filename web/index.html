@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#0b0d10" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <title>Télécommande</title>
@@ -12,13 +12,26 @@
   <video id="screen" autoplay playsinline muted></video>
   <canvas id="cursor"></canvas>
   <div id="state" class="state">Connexion…</div>
-  <nav id="bar" class="bar hidden" aria-label="Commandes">
-    <button data-act="keyboard">Clavier</button>
-    <button data-act="mods">Modif.</button>
-    <button data-act="shortcuts">Raccourcis</button>
-    <button data-act="mode">Mode</button>
-    <button data-act="quit">Quitter</button>
-  </nav>
+  <div id="screens" class="screens" role="group">
+    <div id="opts" class="opts">
+      <button type="button" data-screen="0" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 18h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" data-screen="1" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" data-screen="all" class="on" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="9" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="5" width="9" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+      </button>
+      <button type="button" id="keypad" data-act="keys" aria-label="Clavier" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7 10h2M11 10h2M15 10h2M8 14h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <button type="button" id="fold" data-act="bar" aria-expanded="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <input id="keys" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" tabindex="-1" />
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

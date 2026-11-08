@@ -1,14 +1,17 @@
-# telecommande (nom provisoire)
+# Télécommande
 
 Télécommande de bureau Linux depuis le téléphone : PWA + démon Rust, WebRTC.
 Voir `PLAN.md` pour le cadrage complet et les phases.
 
 ## État
 
-Phase 1 : le démon capture le bureau X11, l’encode en H.264 et l’envoie en WebRTC.
-Le WebSocket ne porte plus que la signalisation (offre, réponse, ICE), protégée par le jeton.
-Deux DataChannels sont ouverts : `move` (non fiable) et `ctrl` (fiable). L’injection
-uinput arrive en phase 3.
+Phase 1 validée : le téléphone affiche le bureau. L’encodeur matériel est choisi
+automatiquement (`vaapih264enc` sur la machine de référence).
+Le doigt déplace le curseur, le tap clique, deux doigts font défiler.
+Trois sigles restent affichés : l’écran interne, l’écran externe, les deux.
+Un tap sur l’image d’un écran l’isole aussi. Le pincement agrandit la vue.
+Le clavier du téléphone écrit dans la session. La flèche range les sigles.
+`/dev/uinput` doit être accessible au groupe `telecommande` (le démon ne tourne pas en root).
 
 `gstreamer1.0-nice` et les paquets `-dev` GStreamer sont requis pour compiler et pour
 que `webrtcbin` démarre. Sans `nicesrc`, le démon s’arrête avec un message explicite.
@@ -38,9 +41,20 @@ cargo run -- --web-dir ../web/dist
 `--self-test` doit afficher : `self-test : des images de l'écran sont arrivées par WebRTC`
 et quitter avec le code 0. Il faut une session X11 (`DISPLAY` défini).
 
+Avant le premier lancement qui doit bouger la souris :
+
+```bash
+sudo groupadd --system telecommande
+sudo usermod -aG telecommande "$USER"
+sudo install -m 644 packaging/70-telecommande-uinput.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=uinput
+```
+
+Le groupe n’est pris en compte que dans un nouveau shell (`sg telecommande` ou une nouvelle session).
+
 Ensuite le démon affiche un QR. Sur le téléphone, même Wi-Fi : scanner, accepter le
-certificat auto-signé, l’écran du bureau apparaît. Le curseur de la machine ne bouge
-pas encore (phase 3). Si l’image est trop large, relancer avec `--max-width 1920`.
+certificat auto-signé, l’écran du bureau apparaît. Un doigt déplace le curseur.
+Si l’image est trop large, relancer avec `--max-width 1920`.
 
 Résultat attendu : vidéo fluide du bureau, sans écran blanc. L’overlay « Connexion… »
 disparaît à la première image.
@@ -54,4 +68,4 @@ disparaît à la première image.
 
 Jeton 256 bits, un par appareil, stocké dans `~/.config/telecommande/` (600).
 Écoute LAN uniquement par défaut. Aucun secret dans le dépôt.
-Licence : à choisir.
+Licence : tous droits réservés, Tom. Voir `LICENSE`.

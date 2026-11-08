@@ -1,10 +1,15 @@
 // WebRTC : la vidéo arrive en piste, la souris part sur le canal non fiable, le reste sur le canal fiable.
+export type ScreenInfo = { name: string; label: string; x: number; y: number; w: number; h: number };
+export type Layout = { w: number; h: number; screens: ScreenInfo[] };
+
 export type Ev =
   | { t: "move"; dx: number; dy: number }
   | { t: "button"; b: number; down: boolean }
   | { t: "scroll"; dx: number; dy: number }
   | { t: "key"; code: number; down: boolean }
-  | { t: "text"; s: string };
+  | { t: "text"; s: string }
+  | { t: "hello" }
+  | { t: "focus"; name: string };
 
 type Sig =
   | { kind: "offer"; sdp: string }
@@ -22,6 +27,7 @@ export class Link {
   private iceQueue: RTCIceCandidateInit[] = [];
   onStatus: (text: string, live: boolean) => void = () => {};
   onStream: (stream: MediaStream | null) => void = () => {};
+  onLayout: (layout: Layout) => void = () => {};
 
   connect(token: string) {
     this.gen += 1;
@@ -43,8 +49,21 @@ export class Link {
       this.onStream(stream);
     };
     pc.ondatachannel = (ev) => {
-      if (ev.channel.label === "move") this.move = ev.channel;
-      else if (ev.channel.label === "ctrl") this.ctrl = ev.channel;
+      const ch = ev.channel;
+      if (ch.label === "move") this.move = ch;
+      else if (ch.label === "ctrl") {
+        this.ctrl = ch;
+        ch.onmessage = (msg) => {
+          if (typeof msg.data !== "string") return;
+          try {
+            const data = JSON.parse(msg.data) as { t?: string };
+            if (data.t === "layout") this.onLayout(data as Layout);
+          } catch { /* message d'entrée, pas une géométrie */ }
+        };
+        const ask = () => { if (ch.readyState === "open") ch.send(JSON.stringify({ t: "hello" })); };
+        ch.onopen = ask;
+        ask();
+      }
     };
     pc.onicecandidate = (ev) => {
       if (!ev.candidate || ws.readyState !== WebSocket.OPEN) return;
