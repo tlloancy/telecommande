@@ -5,6 +5,8 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 pub const MAX_TEXT: usize = 5000;
+/// Caractères tapés entre deux vérifications de l'arrêt d'urgence.
+const TYPE_CHUNK: usize = 25;
 
 pub fn definitions() -> Value {
     let xy = |what: &str| json!({
@@ -105,15 +107,13 @@ impl Tools {
     }
 
     pub fn call(&mut self, name: &str, args: &Value) -> Result<Vec<Value>, String> {
-        if name == "list_screens" {
-            return self.list_screens();
-        }
-        if !matches!(name, "screenshot" | "mouse_move" | "click" | "drag" | "scroll" | "type_text" | "key") {
+        if !matches!(name, "list_screens" | "screenshot" | "mouse_move" | "click" | "drag" | "scroll" | "type_text" | "key") {
             return Err(format!("outil inconnu : {name}"));
         }
         self.safety.authorize().inspect_err(|why| safety::journal(name, "{}", &format!("refusé : {why}")))?;
         let detail = redacted(name, args);
         let result = match name {
+            "list_screens" => self.list_screens(),
             "screenshot" => self.screenshot(args),
             "mouse_move" => self.mouse_move(args),
             "click" => self.click(args),
@@ -140,20 +140,17 @@ impl Tools {
 
     fn screenshot(&mut self, args: &Value) -> Result<Vec<Value>, String> {
         let max_dim = args.get("max_dim").and_then(Value::as_u64).unwrap_or(1568).clamp(256, 4096) as u32;
-        let (x, y, w, h) = match args.get("screen").and_then(Value::as_str) {
+        let region = match args.get("screen").and_then(Value::as_str) {
             Some(name) => {
                 let list = screens::list().map_err(|e| e.to_string())?;
                 let s = list.iter().find(|s| s.output == name).ok_or_else(|| format!("écran inconnu : {name}"))?;
-                (s.x, s.y, s.w, s.h)
+                Some((s.x, s.y, s.w, s.h))
             }
-            None => {
-                let (w, h) = shot::desktop_size().map_err(|e| e.to_string())?;
-                (0, 0, w, h)
-            }
+            None => None,
         };
-        let shot = shot::capture(x, y, w, h, max_dim).map_err(|e| format!("{e:#}"))?;
+        let shot = shot::capture(region, max_dim).map_err(|e| format!("{e:#}"))?;
         self.last = Some((shot.x, shot.y, shot.scale));
-        let ptr = shot::pointer().ok().map(|(px, py)| {
+        let ptr = Some(shot.pointer).map(|(px, py)| {
             let (ix, iy) = (
                 ((f64::from(px - shot.x)) * shot.scale).round() as i32,
                 ((f64::from(py - shot.y)) * shot.scale).round() as i32,
@@ -242,8 +239,23 @@ impl Tools {
         if s.chars().count() > MAX_TEXT {
             return Err(format!("texte trop long (max {MAX_TEXT} caractères)"));
         }
-        let skipped = keyboard::type_text_report(s).map_err(|e| format!("{e:#}"))?;
+        // Par petits morceaux : l'arrêt d'urgence doit couper une longue saisie en cours de route.
         let total = s.chars().count();
+        let chars: Vec<char> = s.chars().collect();
+        let (mut typed, mut skipped) = (0usize, Vec::new());
+        for piece in chars.chunks(TYPE_CHUNK) {
+            if safety::is_stopped() {
+                return Err(format!(
+                    "Arrêt d'urgence pendant la saisie : {typed} caractères tapés sur {total}"
+                ));
+            }
+            let part: String = piece.iter().collect();
+            skipped.extend(keyboard::type_text_report(&part).map_err(|e| format!("{e:#}"))?);
+            typed += piece.len();
+            if typed < total {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
         if skipped.is_empty() {
             Ok(vec![text(format!("{total} caractères tapés."))])
         } else {

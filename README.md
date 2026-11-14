@@ -64,8 +64,16 @@ disparaît à la première image.
 Écran verrouillé / écran de connexion (GDM) non géré. Session X11 uniquement
 (Wayland : phase 9).
 
+## Serveur MCP (pour les agents)
+
+Le dossier `mcp/` contient `telecommande-mcp`, un serveur MCP local (stdio) : un agent (Grok Build,
+Cursor…) peut voir l’écran et utiliser la souris et le clavier de cette machine. Accord sur le
+bureau à chaque session, arrêt d’urgence (`telecommande-mcp stop`) et journal des actions.
+Voir `mcp/README.md`. Fichiers pour un catalogue de plugins : `.mcp.json`, `.grok-plugin/plugin.json`,
+`assets/logo.png`.
+
 ## Sécurité
 
-Jeton 256 bits, un par appareil, stocké dans `~/.config/telecommande/` (600).
+Appairage par code à usage unique (15 min par défaut, `--pair-ttl`), échangé contre un jeton 256 bits, un par appareil, stocké dans `~/.config/telecommande/` (600).
 Écoute LAN uniquement par défaut. Aucun secret dans le dépôt.
 Licence : tous droits réservés, Tom. Voir `LICENSE`.

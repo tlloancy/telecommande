@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "telecommande": {
+      "command": "telecommande-mcp"
+    }
+  }
+}

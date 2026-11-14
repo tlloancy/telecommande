@@ -16,27 +16,18 @@ pub struct Shot {
     pub region_h: u32,
     /// image = bureau * scale.
     pub scale: f64,
+    /// Position du pointeur (pixels du bureau), lue sur la même connexion.
+    pub pointer: (i32, i32),
 }
 
-pub fn desktop_size() -> Result<(u32, u32)> {
-    let (conn, n) = RustConnection::connect(None).context("connexion X11")?;
-    let s = &conn.setup().roots[n];
-    Ok((u32::from(s.width_in_pixels), u32::from(s.height_in_pixels)))
-}
-
-pub fn pointer() -> Result<(i32, i32)> {
-    let (conn, n) = RustConnection::connect(None).context("connexion X11")?;
-    let root = conn.setup().roots[n].root;
-    let r = conn.query_pointer(root)?.reply()?;
-    Ok((i32::from(r.root_x), i32::from(r.root_y)))
-}
-
-/// Capture la région (x, y, w, h) du bureau, réduite pour que son grand côté <= `max_dim`.
-pub fn capture(x: i32, y: i32, w: u32, h: u32, max_dim: u32) -> Result<Shot> {
+/// Capture la région (x, y, w, h) du bureau (tout le bureau si `None`), réduite pour que son
+/// grand côté <= `max_dim`. Une seule connexion X11 sert à tout.
+pub fn capture(region: Option<(i32, i32, u32, u32)>, max_dim: u32) -> Result<Shot> {
     let (conn, n) = RustConnection::connect(None).context("connexion X11")?;
     let setup = conn.setup();
     let screen = &setup.roots[n];
     let (dw, dh) = (i32::from(screen.width_in_pixels), i32::from(screen.height_in_pixels));
+    let (x, y, w, h) = region.unwrap_or((0, 0, dw as u32, dh as u32));
     let x0 = x.clamp(0, dw);
     let y0 = y.clamp(0, dh);
     let w = (w as i32).min(dw - x0).max(0) as u32;
@@ -74,7 +65,18 @@ pub fn capture(x: i32, y: i32, w: u32, h: u32, max_dim: u32) -> Result<Shot> {
         let mut writer = enc.write_header().context("png")?;
         writer.write_image_data(&rgb).context("png")?;
     }
-    Ok(Shot { png, w: ow, h: oh, x: x0, y: y0, region_w: w, region_h: h, scale: f64::from(ow) / f64::from(w) })
+    let ptr = conn.query_pointer(screen.root)?.reply().context("QueryPointer")?;
+    Ok(Shot {
+        png,
+        w: ow,
+        h: oh,
+        x: x0,
+        y: y0,
+        region_w: w,
+        region_h: h,
+        scale: f64::from(ow) / f64::from(w),
+        pointer: (i32::from(ptr.root_x), i32::from(ptr.root_y)),
+    })
 }
 
 /// BGRX (w x h) -> RGB (ow x oh), moyenne par zone.

@@ -46,6 +46,8 @@ pub fn log_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join("telecommande");
     let _ = fs::create_dir_all(&base);
+    // Le journal dit ce que l'agent a fait : le dossier n'est pas pour les autres utilisateurs.
+    let _ = fs::set_permissions(&base, fs::Permissions::from_mode(0o700));
     base.join("mcp-actions.log")
 }
 
@@ -95,20 +97,48 @@ fn ask_user() -> Result<bool, String> {
         return Ok(true);
     }
     let text = "Un agent IA demande à voir et contrôler ce bureau (écran, souris, clavier). Autoriser ?";
-    let status = if let Ok(cmd) = std::env::var("TELECOMMANDE_MCP_APPROVE_CMD") {
-        Command::new("sh").arg("-c").arg(cmd).status()
+    let mut cmd = if let Ok(cmd) = std::env::var("TELECOMMANDE_MCP_APPROVE_CMD") {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(cmd);
+        c
     } else if has("zenity") {
-        Command::new("zenity")
-            .args(["--question", "--title=Télécommande", "--ok-label=Autoriser", "--cancel-label=Refuser"])
+        let mut c = Command::new("zenity");
+        c.args(["--question", "--title=Télécommande", "--ok-label=Autoriser", "--cancel-label=Refuser"])
             .arg(format!("--text={text}"))
-            .arg("--timeout=60")
-            .status()
+            .arg("--timeout=60");
+        c
     } else if has("kdialog") {
-        Command::new("kdialog").args(["--title", "Télécommande", "--yesno", text]).status()
+        let mut c = Command::new("kdialog");
+        c.args(["--title", "Télécommande", "--yesno", text]);
+        c
     } else {
         return Err("installe zenity ou kdialog, ou définis TELECOMMANDE_MCP_APPROVE_CMD".into());
     };
-    status.map(|s| s.success()).map_err(|e| e.to_string())
+    run_with_timeout(&mut cmd, DIALOG_TIMEOUT)
+}
+
+/// Sans réponse dans ce délai, c'est un refus : une boîte oubliée ne doit pas figer le serveur.
+const DIALOG_TIMEOUT: Duration = Duration::from_secs(65);
+
+/// Ok(true) = code 0 ; Ok(false) = autre code ou délai dépassé (le processus est tué).
+fn run_with_timeout(cmd: &mut Command, limit: Duration) -> Result<bool, String> {
+    let mut child = cmd
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status.success()),
+            Ok(None) if start.elapsed() >= limit => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(false);
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
 }
 
 fn has(bin: &str) -> bool {
@@ -135,4 +165,28 @@ pub fn journal(tool: &str, detail: &str, outcome: &str) {
 
 fn json_str(s: &str) -> String {
     serde_json::Value::String(s.to_string()).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dialog_exit_codes_map_to_answers() {
+        let mut yes = Command::new("sh");
+        yes.args(["-c", "exit 0"]);
+        assert_eq!(run_with_timeout(&mut yes, Duration::from_secs(5)), Ok(true));
+        let mut no = Command::new("sh");
+        no.args(["-c", "exit 1"]);
+        assert_eq!(run_with_timeout(&mut no, Duration::from_secs(5)), Ok(false));
+    }
+
+    #[test]
+    fn hung_dialog_is_killed_and_counts_as_refusal() {
+        let mut hung = Command::new("sh");
+        hung.args(["-c", "sleep 30"]);
+        let t = Instant::now();
+        assert_eq!(run_with_timeout(&mut hung, Duration::from_millis(200)), Ok(false));
+        assert!(t.elapsed() < Duration::from_secs(5));
+    }
 }
