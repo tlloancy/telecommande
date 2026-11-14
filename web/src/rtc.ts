@@ -24,6 +24,8 @@ export class Link {
   private ctrl?: RTCDataChannel;
   private gen = 0;
   private token = "";
+  /// Échecs d'ouverture consécutifs : un jeton refusé (401) ferme le WebSocket avant `open`.
+  private failedOpens = 0;
   private remoteReady = false;
   private iceQueue: RTCIceCandidateInit[] = [];
   onStatus: (text: string, live: boolean) => void = () => {};
@@ -66,6 +68,18 @@ export class Link {
         ask();
       }
     };
+    // Le WebSocket peut rester « ouvert » alors que la liaison vidéo est morte (changement de
+    // pièce = changement de borne Wi-Fi, donc d'adresse). On relance la connexion nous-mêmes.
+    let dropTimer: number | undefined;
+    pc.onconnectionstatechange = () => {
+      if (gen !== this.gen) return;
+      window.clearTimeout(dropTimer);
+      if (pc.connectionState === "failed") this.reconnect(gen);
+      else if (pc.connectionState === "disconnected") {
+        this.onStatus("Signal faible, reconnexion…", false);
+        dropTimer = window.setTimeout(() => this.reconnect(gen), 4000);
+      }
+    };
     pc.onicecandidate = (ev) => {
       if (!ev.candidate || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({
@@ -79,17 +93,37 @@ export class Link {
       if (gen !== this.gen || typeof ev.data !== "string") return;
       void this.onSignal(pc, ws, ev.data);
     };
+    let opened = false;
+    ws.onopen = () => { opened = true; this.failedOpens = 0; };
     ws.onclose = () => {
       if (gen !== this.gen) return;
+      if (!opened) this.failedOpens += 1;
+      const stuck = this.failedOpens >= 3;
       this.onStream(null);
-      this.onStatus("Connexion perdue, nouvelle tentative…", false);
+      this.onStatus(stuck
+        ? "Bureau éteint ou téléphone non reconnu : rescanne le QR affiché sur l’ordinateur."
+        : "Connexion perdue, nouvelle tentative…", false);
       window.setTimeout(() => {
         if (gen === this.gen) this.connect(token);
-      }, 1500);
+      }, stuck ? 5000 : 1500);
     };
     ws.onerror = () => {
       if (gen === this.gen) this.onStatus("Connexion…", false);
     };
+  }
+
+  private reconnect(gen: number) {
+    if (gen === this.gen && this.token) this.connect(this.token);
+  }
+
+  /// À appeler quand le téléphone se réveille ou retrouve le réseau : si la liaison n'est pas
+  /// saine, on repart tout de suite au lieu d'attendre un délai.
+  resume() {
+    if (!this.token) return;
+    const healthy = this.ws?.readyState === WebSocket.OPEN && this.pc?.connectionState === "connected";
+    if (healthy) return;
+    this.failedOpens = 0;
+    this.connect(this.token);
   }
 
   send(ev: Ev) {

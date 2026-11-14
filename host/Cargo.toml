@@ -28,7 +28,7 @@ hex = "0.4"
 qrcode = { version = "0.14", default-features = false }
 rcgen = "0.13"
 # CLI, config, sérialisation, logs
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"

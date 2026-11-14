@@ -4,7 +4,7 @@
 use crate::{
     capture::{self, CaptureOpts, HostSignal},
     encoder::Encoder,
-    pairing::{self, TlsFiles, TokenStore},
+    pairing::{self, Pairing, RedeemError, TlsFiles, TokenStore},
 };
 use axum::{
     body::Body,
@@ -15,8 +15,8 @@ use axum::{
     http::{Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::get,
-    Router,
+    routing::{get, post},
+    Json, Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
 use futures_util::{SinkExt, StreamExt};
@@ -26,6 +26,7 @@ use std::path::PathBuf;
 use tower_http::services::ServeDir;
 
 pub struct Config {
+    pub pairing: Pairing,
     pub port: u16,
     pub web_dir: PathBuf,
     pub tls: TlsFiles,
@@ -37,6 +38,7 @@ pub struct Config {
 
 #[derive(Clone)]
 struct AppState {
+    pairing: Pairing,
     store: TokenStore,
     encoder: Encoder,
     capture: CaptureOpts,
@@ -48,8 +50,14 @@ struct WsAuth {
     token: String,
 }
 
+#[derive(Deserialize)]
+struct PairRequest {
+    code: String,
+}
+
 pub async fn run(cfg: Config) -> anyhow::Result<()> {
     let state = AppState {
+        pairing: cfg.pairing,
         store: cfg.store,
         encoder: cfg.encoder,
         capture: cfg.capture,
@@ -57,6 +65,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/pair", post(pair_handler))
         .fallback_service(ServeDir::new(&cfg.web_dir))
         .layer(middleware::from_fn_with_state(state.clone(), lan_gate))
         .with_state(state);
@@ -96,6 +105,32 @@ async fn ws_handler(
     let capture = state.capture;
     ws.on_upgrade(move |sock| handle_socket(sock, encoder, capture))
         .into_response()
+}
+
+/// Échange le code du QR (usage unique, durée limitée) contre un jeton d'appareil permanent.
+async fn pair_handler(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    State(state): State<AppState>,
+    Json(req): Json<PairRequest>,
+) -> Response {
+    match state.pairing.redeem(peer.ip(), &req.code) {
+        Ok(()) => match state.store.create_token() {
+            Ok(token) => {
+                tracing::info!("nouvel appareil appairé depuis {}", peer.ip());
+                Json(serde_json::json!({ "token": token })).into_response()
+            }
+            Err(err) => {
+                tracing::error!("jeton non enregistré : {err:#}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        },
+        Err(RedeemError::Expired) => StatusCode::GONE.into_response(),
+        Err(RedeemError::RateLimited) => {
+            tracing::warn!("appairage : trop d'essais depuis {}", peer.ip());
+            StatusCode::TOO_MANY_REQUESTS.into_response()
+        }
+        Err(RedeemError::Invalid) => StatusCode::FORBIDDEN.into_response(),
+    }
 }
 
 enum ClientCmd {

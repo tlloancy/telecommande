@@ -21,9 +21,13 @@ struct Cli {
     /// Dossier de la PWA compilée
     #[arg(long, default_value = "web/dist")]
     web_dir: PathBuf,
-    /// Affiche un nouveau QR d'appairage et quitte
+    /// Affiche un QR à jeton permanent (sans expiration) et quitte. Le service en cours le reconnaît.
     #[arg(long)]
     pair: bool,
+    /// Durée de vie du QR d'appairage, en secondes (30 à 3600). Il se renouvelle seul à l'expiration.
+    #[arg(long, env = "TELECOMMANDE_PAIR_TTL", default_value_t = 900,
+          value_parser = clap::value_parser!(u64).range(30..=3600))]
+    pair_ttl: u64,
     /// Écoute aussi hors du LAN (déconseillé). Par défaut : adresses privées, loopback et Tailscale.
     #[arg(long)]
     listen_all: bool,
@@ -69,18 +73,19 @@ async fn main() -> anyhow::Result<()> {
     let tls = pairing::ensure_tls(&cfg_dir)?;
     let store = pairing::TokenStore::load(&cfg_dir)?;
 
-    let token = store.create_token()?;
-    let urls = pairing::page_urls(cli.port, &token);
-    let url = urls.first().cloned().unwrap_or_default();
-    println!("\nScanne ce QR avec le téléphone (même Wi-Fi) :\n{}\n{url}\n", pairing::qr_ascii(&url)?);
-    for extra in urls.iter().skip(1) {
-        println!("Autre adresse : {extra}");
-    }
     if cli.pair {
+        let token = store.create_token()?;
+        pairing::print_qr(cli.port, &format!("t={token}"), None)?;
         return Ok(());
     }
 
+    // Plus de jeton permanent créé (et imprimé dans le journal) à chaque démarrage :
+    // le QR porte un code court, à usage unique, échangé contre un jeton par POST /pair.
+    let pairing = pairing::Pairing::new(std::time::Duration::from_secs(cli.pair_ttl));
+    tokio::spawn(pairing::announce_loop(pairing.clone(), cli.port));
+
     server::run(server::Config {
+        pairing,
         port: cli.port,
         web_dir: cli.web_dir,
         tls,

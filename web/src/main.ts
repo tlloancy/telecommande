@@ -3,10 +3,12 @@ import { Trackpad } from "./gestures";
 import { attachKeyboard } from "./ui/keyboard";
 import { framePoint, hitScreen, place, zoomAt, type Region } from "./view";
 
-// Le jeton arrive via le QR (#t=...) puis est mémorisé.
-const m = location.hash.match(/t=([0-9a-f]+)/);
-if (m) { localStorage.setItem("token", m[1]); history.replaceState(null, "", location.pathname); }
-const token = localStorage.getItem("token");
+// Le QR porte un code court (#p=..., usage unique) échangé contre un jeton d'appareil,
+// ou directement un jeton permanent (#t=..., `--pair`). Le jeton est mémorisé.
+const legacy = location.hash.match(/t=([0-9a-f]+)/);
+const pairCode = location.hash.match(/p=([0-9a-f]+)/);
+if (legacy || pairCode) history.replaceState(null, "", location.pathname);
+if (legacy) localStorage.setItem("token", legacy[1]);
 
 const state = document.getElementById("state")!;
 const video = document.getElementById("screen") as HTMLVideoElement;
@@ -21,8 +23,35 @@ link.onStream = (stream) => {
 };
 video.addEventListener("playing", () => state.classList.add("off"));
 
-if (!token) state.textContent = "Scanne le QR affiché sur l’ordinateur.";
-else link.connect(token);
+async function redeem(code: string): Promise<string | null> {
+  try {
+    const res = await fetch("/pair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (res.ok) {
+      const { token } = (await res.json()) as { token: string };
+      localStorage.setItem("token", token);
+      return token;
+    }
+    state.textContent =
+      res.status === 410 ? "Ce QR a expiré : scanne le nouveau, affiché sur l’ordinateur."
+      : res.status === 429 ? "Trop d’essais : réessaie dans une minute."
+      : "QR refusé : scanne celui affiché sur l’ordinateur.";
+  } catch {
+    state.textContent = "Bureau injoignable : vérifie le Wi-Fi.";
+  }
+  return null;
+}
+
+void (async () => {
+  const stored = localStorage.getItem("token");
+  // Déjà appairé : un QR périmé ne doit pas casser la connexion existante.
+  const token = pairCode ? ((await redeem(pairCode[1])) ?? stored) : stored;
+  if (token) link.connect(token);
+  else if (!pairCode) state.textContent = "Scanne le QR affiché sur l’ordinateur.";
+})();
 
 let layout: Layout | null = null;
 let focusName = "all";
@@ -220,5 +249,15 @@ window.addEventListener("pointerup", e => pad.up(e.pointerId));
 window.addEventListener("pointercancel", e => pad.up(e.pointerId));
 
 // Empêche la mise en veille du téléphone.
-navigator.wakeLock?.request("screen").catch(() => {});
+const keepAwake = () => { navigator.wakeLock?.request("screen").catch(() => {}); };
+keepAwake();
+// Le verrou d'écran saute dès que la page est masquée ; on le reprend, et on relance la liaison
+// si le téléphone a changé de pièce (donc de borne Wi-Fi) ou s'est endormi entre-temps.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  keepAwake();
+  link.resume();
+});
+window.addEventListener("online", () => link.resume());
+window.addEventListener("pageshow", () => link.resume());
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
