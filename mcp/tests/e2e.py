@@ -88,6 +88,20 @@ check("stop interrupts a long type_text", bool(m) and 0 < int(m.group(1)) < 5000
 subprocess.check_call([BIN,"resume"],env=env,stdout=subprocess.DEVNULL)
 p.stdin.close(); p.wait(timeout=5)
 
+# après un arrêt d'urgence, la reprise redemande l'accord sur le bureau
+cnt="/tmp/e2e_consent_count"; open(cnt,"w").close()
+p5 = start({"TELECOMMANDE_MCP_ASSUME_YES":"0","TELECOMMANDE_MCP_APPROVE_CMD":f"echo x >> {cnt}"})
+rpc(p5,"initialize",{"protocolVersion":"2025-06-18"})
+call(p5,"mouse_move",{"x":5,"y":5}); call(p5,"mouse_move",{"x":6,"y":6})
+n1=len(open(cnt).read().split())
+subprocess.check_call([BIN,"stop"],env=env,stdout=subprocess.DEVNULL); call(p5,"mouse_move",{"x":7,"y":7})
+subprocess.check_call([BIN,"resume"],env=env,stdout=subprocess.DEVNULL)
+check("resume after stop is allowed again", not call(p5,"mouse_move",{"x":8,"y":8}).get("isError"))
+n2=len(open(cnt).read().split())
+check("consent asked once, not per action", n1==1, n1)
+check("consent asked AGAIN after stop+resume", n2==2, n2)
+p5.stdin.close(); p5.wait(timeout=5)
+
 # refus d'accord
 p2 = start({"TELECOMMANDE_MCP_ASSUME_YES":"0","TELECOMMANDE_MCP_APPROVE_CMD":"exit 1"})
 rpc(p2,"initialize",{"protocolVersion":"2025-06-18"})

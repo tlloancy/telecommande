@@ -14,8 +14,18 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// Variable XDG si elle est absolue, sinon `~/<repli>` (sans la crate `dirs`, sous MPL-2.0 via
+/// une dépendance).
+fn xdg(var: &str, fallback: &str) -> PathBuf {
+    let abs = |v: std::ffi::OsString| Some(PathBuf::from(v)).filter(|p| p.is_absolute());
+    std::env::var_os(var)
+        .and_then(abs)
+        .or_else(|| std::env::var_os("HOME").and_then(abs).map(|h| h.join(fallback)))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 pub fn config_dir() -> PathBuf {
-    let d = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("telecommande");
+    let d = xdg("XDG_CONFIG_HOME", ".config").join("telecommande");
     let _ = fs::create_dir_all(&d);
     let _ = fs::set_permissions(&d, fs::Permissions::from_mode(0o700));
     d
@@ -41,10 +51,7 @@ pub fn set_stopped(stop: bool) -> std::io::Result<()> {
 }
 
 pub fn log_path() -> PathBuf {
-    let base = dirs::state_dir()
-        .or_else(dirs::data_local_dir)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("telecommande");
+    let base = xdg("XDG_STATE_HOME", ".local/state").join("telecommande");
     let _ = fs::create_dir_all(&base);
     // Le journal dit ce que l'agent a fait : le dossier n'est pas pour les autres utilisateurs.
     let _ = fs::set_permissions(&base, fs::Permissions::from_mode(0o700));
@@ -65,6 +72,8 @@ impl Safety {
     /// Autorise (ou non) une action. À appeler avant chaque outil qui touche au bureau.
     pub fn authorize(&mut self) -> Result<(), String> {
         if is_stopped() {
+            // Après un arrêt d'urgence, la reprise exige un nouvel accord sur le bureau.
+            self.last_action = None;
             return Err(format!(
                 "Arrêt d'urgence actif ({}). L'utilisateur doit lancer `telecommande-mcp resume`.",
                 stop_flag().display()

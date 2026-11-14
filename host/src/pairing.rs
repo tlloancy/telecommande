@@ -13,8 +13,17 @@ pub struct TlsFiles {
     pub key: PathBuf,
 }
 
+/// Dossier de config XDG : `$XDG_CONFIG_HOME` s'il est absolu, sinon `~/.config`.
+/// (Sans la crate `dirs`, qui tire une dépendance sous MPL-2.0.)
+fn xdg_config_home() -> Option<PathBuf> {
+    let abs = |v: std::ffi::OsString| Some(PathBuf::from(v)).filter(|p| p.is_absolute());
+    std::env::var_os("XDG_CONFIG_HOME")
+        .and_then(abs)
+        .or_else(|| std::env::var_os("HOME").and_then(abs).map(|h| h.join(".config")))
+}
+
 pub fn config_dir() -> Result<PathBuf> {
-    let d = dirs::config_dir().context("pas de dossier de config")?.join("telecommande");
+    let d = xdg_config_home().context("pas de dossier de config")?.join("telecommande");
     fs::create_dir_all(&d)?;
     fs::set_permissions(&d, fs::Permissions::from_mode(0o700))?;
     Ok(d)

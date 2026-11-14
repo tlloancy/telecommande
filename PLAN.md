@@ -6,7 +6,7 @@ Phase 3 : souris relative, choix d’écran, frappe dans la session.
 Trois sigles choisissent l’écran interne, l’externe, ou les deux. La flèche les range.
 Le pincement agrandit la vue. Modificateurs, raccourcis et mode tactile ne sont pas là.
 Nom : Télécommande (`telecommande` sur GitHub).
-Licence : tous droits réservés, Tom. Voir `LICENSE`.
+Licence : Apache 2.0, © 2026 Thomas Lloancy. Voir `LICENSE` et `NOTICE`.
 
 Machine lue sur cet hôte pour la phase 1 : Linux Mint 22.3, Cinnamon 6.6.9, session X11,
 Intel HD Graphics 620, écran interne 1440×960 et écran DP-2 1920×1080 (bureau 3360×1080).
@@ -138,4 +138,4 @@ Une phase à la fois. La suivante attend la validation de la précédente.
 
 ## 7. Consignes
 
-Dépendances limitées à GStreamer, axum, evdev, xkbcommon, plus le strict nécessaire (QR, mDNS, TLS, types WebRTC). Commenter le pipeline et le mapping clavier. Tests unitaires pour le mapping clavier et le moteur de gestes. Mesurer la latence avant d’optimiser. Le nom est Télécommande. La licence réserve tous les droits à Tom. L’esthétique se demande.
+Dépendances limitées à GStreamer, axum, evdev, xkbcommon, plus le strict nécessaire (QR, mDNS, TLS, types WebRTC). Commenter le pipeline et le mapping clavier. Tests unitaires pour le mapping clavier et le moteur de gestes. Mesurer la latence avant d’optimiser. Le nom est Télécommande. La licence est Apache 2.0 (© Thomas Lloancy). L’esthétique se demande.

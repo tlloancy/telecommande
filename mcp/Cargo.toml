@@ -2,6 +2,7 @@
 name = "telecommande-mcp"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 description = "Serveur MCP local (stdio) pour piloter le bureau X11 : capture, souris, clavier"
 
 [[bin]]
@@ -16,7 +17,6 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde_json = "1"
-dirs = "5"
 # Capture : PNG renvoyé à l'agent.
 png = "0.17"
 base64 = "0.22"

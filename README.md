@@ -76,4 +76,4 @@ Voir `mcp/README.md`. Fichiers pour un catalogue de plugins : `.mcp.json`, `.gr
 
 Appairage par code à usage unique (15 min par défaut, `--pair-ttl`), échangé contre un jeton 256 bits, un par appareil, stocké dans `~/.config/telecommande/` (600).
 Écoute LAN uniquement par défaut. Aucun secret dans le dépôt.
-Licence : tous droits réservés, Tom. Voir `LICENSE`.
+Licence : Apache 2.0, © 2026 Thomas Lloancy. Voir `LICENSE` et `NOTICE`.
