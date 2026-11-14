@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{KEY_PRESS_EVENT, KEY_RELEASE_EVENT};
+use x11rb::protocol::xproto::{ConnectionExt, KEY_PRESS_EVENT, KEY_RELEASE_EVENT};
 use x11rb::protocol::xtest;
 use x11rb::rust_connection::RustConnection;
 use xkbcommon::xkb::{self, Keycode, Keymap, Keysym};
@@ -91,6 +91,20 @@ pub fn type_text(text: &str) -> Result<()> {
             }
         }
         conn.flush().context("flush")?;
+        Ok(())
+    })
+}
+
+/// Pose le pointeur au pixel du bureau. Même connexion que la frappe.
+pub fn warp_pointer(x: i32, y: i32) -> Result<()> {
+    with_conn(|conn| {
+        let root = conn.setup().roots.first().context("écran X11")?.root;
+        let x = i16::try_from(x).unwrap_or(if x < 0 { i16::MIN } else { i16::MAX });
+        let y = i16::try_from(y).unwrap_or(if y < 0 { i16::MIN } else { i16::MAX });
+        conn.warp_pointer(0u32, root, 0, 0, 0, 0, x, y).context("warp")?;
+        // Aller-retour : le clic qui suit passe par uinput, un autre chemin.
+        // Sans ça, le clic peut partir avant que le serveur ait bougé le pointeur.
+        conn.get_input_focus().context("sync")?.reply().context("sync")?;
         Ok(())
     })
 }

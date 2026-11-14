@@ -1,5 +1,5 @@
-//! Entrées via /dev/uinput.
-//! Phase 3 : souris relative, clics, molette. Le clavier (phase 5) est ignoré ici.
+//! Souris relative, clics et molette via /dev/uinput.
+//! La frappe et le curseur absolu passent par X11, avant uinput.
 //! Le démon ne tourne jamais en root : la règle udev donne /dev/uinput au groupe telecommande.
 
 use evdev::uinput::VirtualDeviceBuilder;
@@ -23,6 +23,8 @@ pub enum InputEvent {
     Focus { name: String },
     Key { code: u16, down: bool },
     Text { s: String },
+    /// Curseur posé au pixel du bureau (mode au doigt).
+    Abs { x: i32, y: i32 },
 }
 
 /// Pixels de doigt pour un cran de molette.
@@ -72,7 +74,11 @@ fn translate(wheel: &mut Wheel, ev: &InputEvent) -> Vec<Out> {
             }
             out
         }
-        InputEvent::Hello | InputEvent::Focus { .. } | InputEvent::Key { .. } | InputEvent::Text { .. } => {
+        InputEvent::Hello
+        | InputEvent::Focus { .. }
+        | InputEvent::Key { .. }
+        | InputEvent::Text { .. }
+        | InputEvent::Abs { .. } => {
             Vec::new()
         }
     }
@@ -146,6 +152,12 @@ pub fn handle(ev: InputEvent) {
     if let InputEvent::Text { s } = &ev {
         if let Err(err) = crate::keyboard::type_text(s) {
             tracing::warn!("texte non saisi : {err}");
+        }
+        return;
+    }
+    if let InputEvent::Abs { x, y } = &ev {
+        if let Err(err) = crate::keyboard::warp_pointer(*x, *y) {
+            tracing::warn!("curseur non placé : {err}");
         }
         return;
     }

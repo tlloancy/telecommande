@@ -3,9 +3,6 @@
 //! de cet écran, pour que la souris relative parte de là où l'on regarde.
 
 use anyhow::{anyhow, Context, Result};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::rust_connection::RustConnection;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Screen {
@@ -59,17 +56,7 @@ pub fn focus(output: &str) -> Result<()> {
         .iter()
         .find(|s| s.output == output)
         .ok_or_else(|| anyhow!("écran inconnu"))?;
-    warp(screen.x + screen.w as i32 / 2, screen.y + screen.h as i32 / 2)
-}
-
-fn warp(x: i32, y: i32) -> Result<()> {
-    let (conn, screen_num) = RustConnection::connect(None).context("connexion X11")?;
-    let root = conn.setup().roots[screen_num].root;
-    let x = x.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-    let y = y.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-    conn.warp_pointer(0u32, root, 0, 0, 0, 0, x, y).context("warp")?;
-    conn.flush().context("flush")?;
-    Ok(())
+    crate::keyboard::warp_pointer(screen.x + screen.w as i32 / 2, screen.y + screen.h as i32 / 2)
 }
 
 pub fn parse_listmonitors(text: &str) -> Result<Vec<Screen>> {

@@ -1,7 +1,7 @@
 import { Link, type Layout } from "./rtc";
 import { Trackpad } from "./gestures";
 import { attachKeyboard } from "./ui/keyboard";
-import { hitScreen, place, zoomAt, type Region } from "./view";
+import { framePoint, hitScreen, place, zoomAt, type Region } from "./view";
 
 // Le jeton arrive via le QR (#t=...) puis est mémorisé.
 const m = location.hash.match(/t=([0-9a-f]+)/);
@@ -116,13 +116,31 @@ function focusAt(x: number, y: number) {
   navigator.vibrate?.(8);
 }
 
+let direct = false;
+const pointBtn = document.getElementById("point")!;
+const paintDirect = () => {
+  pointBtn.classList.toggle("on", direct);
+  pointBtn.setAttribute("aria-pressed", direct ? "true" : "false");
+};
+const aimAt = (x: number, y: number) => {
+  const r = region();
+  if (!layout || !r) return;
+  const box = place({
+    vw: window.innerWidth, vh: window.innerHeight,
+    frameW: layout.w, frameH: layout.h, region: r, zoom, panX, panY,
+  });
+  const p = framePoint(box, r, x, y);
+  if (!p) return;
+  link.send({ t: "abs", x: p.x, y: p.y });
+};
 const pad = new Trackpad(e => {
   if (e.t === "pinch") { onPinch(e.scale, e.cx, e.cy); return; }
   if (e.t === "pan") { panX += e.dx; panY += e.dy; applyView(); return; }
   if (e.t === "pick") { focusAt(e.x, e.y); return; }
+  if (e.t === "aim") { aimAt(e.x, e.y); return; }
   link.send(e);
   if (e.t === "button" && e.down) navigator.vibrate?.(8);
-}, () => zoom > 1, () => seeingAll() && !!layout && layout.screens.length > 1);
+}, () => zoom > 1, () => seeingAll() && !!layout && layout.screens.length > 1, () => direct);
 const screens = document.getElementById("screens")!;
 const opts = document.getElementById("opts")!;
 const fold = document.getElementById("fold")!;
@@ -168,6 +186,11 @@ keys.addEventListener("blur", () => {
 document.getElementById("screens")!.addEventListener("click", e => {
   const btn = (e.target as Element).closest("button");
   if (!btn) return;
+  if (btn.dataset.act === "direct") {
+    direct = !direct;
+    paintDirect();
+    return;
+  }
   if (btn.dataset.act === "bar") {
     const folded = screens.classList.toggle("folded");
     opts.toggleAttribute("inert", folded);

@@ -4,6 +4,15 @@
 export type Region = { x: number; y: number; w: number; h: number };
 export type Place = { left: number; top: number; width: number; height: number; scale: number };
 
+/** Point du bureau sous le doigt. Rien si le doigt est hors de la région affichée. */
+export function framePoint(box: Place, region: Region, x: number, y: number): { x: number; y: number } | null {
+  if (box.scale === 0) return null;
+  const fx = (x - box.left) / box.scale;
+  const fy = (y - box.top) / box.scale;
+  if (fx < region.x || fy < region.y || fx >= region.x + region.w || fy >= region.y + region.h) return null;
+  return { x: Math.round(fx), y: Math.round(fy) };
+}
+
 /** Écran sous le doigt, en coordonnées du téléphone. */
 export function hitScreen(
   screens: { name: string; x: number; y: number; w: number; h: number }[],

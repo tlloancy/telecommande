@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hitScreen, place, zoomAt } from "./view";
+import { framePoint, hitScreen, place, zoomAt } from "./view";
 
 describe("vue", () => {
   it("un écran choisi remplit le téléphone", () => {
@@ -26,6 +26,17 @@ describe("vue", () => {
     const after = place({ ...args, ...next });
     expect(after.left + fx * after.scale).toBeCloseTo(cx, 4);
     expect(next.zoom).toBe(2);
+  });
+
+  it("un toucher au milieu de l'écran choisi donne son centre", () => {
+    const region = { x: 1440, y: 0, w: 1920, h: 1080 };
+    const box = place({
+      vw: 360, vh: 800, frameW: 3360, frameH: 1080,
+      region, zoom: 1, panX: 0, panY: 0,
+    });
+    const p = framePoint(box, region, 180, 400);
+    expect(p?.x).toBe(2400);
+    expect(p?.y).toBe(540);
   });
 
   it("un toucher sur la moitié droite choisit l'écran externe", () => {

@@ -24,6 +24,13 @@ describe("Trackpad", () => {
     t.down(1, 12, 40, 0); t.up(1, 100);
     expect(out).toEqual([{ t: "pick", x: 12, y: 40 }]);
   });
+  it("au doigt, le curseur va au point touché puis le tap clique", () => {
+    const out: Gesture[] = [];
+    const t = new Trackpad(e => out.push(e), () => false, () => true, () => true);
+    t.down(1, 12, 40, 0); t.up(1, 100);
+    expect(out.map(e => e.t)).toEqual(["aim", "button", "button"]);
+    expect(out[0]).toEqual({ t: "aim", x: 12, y: 40 });
+  });
   it("tap à 2 doigts = clic droit", () => {
     const out: Gesture[] = []; const t = new Trackpad(e => out.push(e));
     t.down(1, 10, 10, 0); t.down(2, 50, 10, 0); t.up(1, 100); t.up(2, 110);

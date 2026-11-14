@@ -4,6 +4,7 @@ export type Layout = { w: number; h: number; screens: ScreenInfo[] };
 
 export type Ev =
   | { t: "move"; dx: number; dy: number }
+  | { t: "abs"; x: number; y: number }
   | { t: "button"; b: number; down: boolean }
   | { t: "scroll"; dx: number; dy: number }
   | { t: "key"; code: number; down: boolean }
