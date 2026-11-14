@@ -8,7 +8,9 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConnectionExt, KEY_PRESS_EVENT, KEY_RELEASE_EVENT};
+use x11rb::protocol::xproto::{
+    ConnectionExt, BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
+};
 use x11rb::protocol::xtest;
 use x11rb::rust_connection::RustConnection;
 use xkbcommon::xkb::{self, Keycode, Keymap, Keysym};
@@ -69,7 +71,14 @@ fn fallback(ch: char) -> &'static str {
 }
 
 pub fn type_text(text: &str) -> Result<()> {
+    type_text_report(text).map(|_| ())
+}
+
+/// Comme `type_text`, mais rend les caractères que la disposition ne permet pas de taper
+/// (ignorés, sans quoi l'appelant croirait avoir tout saisi).
+pub fn type_text_report(text: &str) -> Result<Vec<char>> {
     with_conn(|conn| {
+        let mut skipped = Vec::new();
         for ch in text.chars() {
             if ch == '\n' || ch == '\r' {
                 tap(conn, evdev_to_x(28))?;
@@ -84,6 +93,7 @@ pub fn type_text(text: &str) -> Result<()> {
             if seq.is_empty() {
                 // warn (et non debug) : un caractère perdu doit se voir dans les logs.
                 tracing::warn!("aucune touche pour {ch:?} (U+{:04X}), ignoré", u32::from(ch));
+                skipped.push(ch);
                 continue;
             }
             for chord in seq {
@@ -91,7 +101,7 @@ pub fn type_text(text: &str) -> Result<()> {
             }
         }
         conn.flush().context("flush")?;
-        Ok(())
+        Ok(skipped)
     })
 }
 
@@ -105,6 +115,52 @@ pub fn warp_pointer(x: i32, y: i32) -> Result<()> {
         // Aller-retour : le clic qui suit passe par uinput, un autre chemin.
         // Sans ça, le clic peut partir avant que le serveur ait bougé le pointeur.
         conn.get_input_focus().context("sync")?.reply().context("sync")?;
+        Ok(())
+    })
+}
+
+/// Bouton de souris par XTest : 1 gauche, 2 milieu, 3 droit, 4/5 molette verticale,
+/// 6/7 molette horizontale. (Utilisé par le serveur MCP, qui n'a pas besoin d'uinput.)
+#[allow(dead_code)]
+pub fn mouse_button(button: u8, down: bool) -> Result<()> {
+    with_conn(|conn| {
+        let kind = if down { BUTTON_PRESS_EVENT } else { BUTTON_RELEASE_EVENT };
+        xtest::fake_input(conn, kind, button, 0, 0, 0, 0, 0).context("xtest")?;
+        conn.flush().context("flush")?;
+        Ok(())
+    })
+}
+
+/// Touche visée par un raccourci : un caractère (résolu par la disposition réelle, donc
+/// Ctrl+A fonctionne en AZERTY) ou un keycode evdev (Entrée, flèches, F5...).
+#[allow(dead_code)]
+pub enum Target {
+    Char(char),
+    Code(u16),
+}
+
+/// Maintient `mods` (keycodes evdev) le temps d'appuyer sur la touche visée.
+#[allow(dead_code)]
+pub fn shortcut(mods: &[u16], target: &Target) -> Result<()> {
+    with_conn(|conn| {
+        let chords = match target {
+            Target::Code(code) => vec![Chord { mods: Vec::new(), key: evdev_to_x(*code) }],
+            Target::Char(ch) => sequence_for(*ch)?,
+        };
+        if chords.is_empty() {
+            return Err(anyhow!("aucune touche pour ce caractère"));
+        }
+        let held: Vec<u8> = mods.iter().map(|code| evdev_to_x(*code)).collect();
+        for m in &held {
+            stroke_x(conn, *m, true)?;
+        }
+        for chord in &chords {
+            play(conn, chord)?;
+        }
+        for m in held.iter().rev() {
+            stroke_x(conn, *m, false)?;
+        }
+        conn.flush().context("flush")?;
         Ok(())
     })
 }

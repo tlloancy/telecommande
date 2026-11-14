@@ -1,0 +1,22 @@
+[package]
+name = "telecommande-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Serveur MCP local (stdio) pour piloter le bureau X11 : capture, souris, clavier"
+
+[[bin]]
+name = "telecommande-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Réutilisés tels quels depuis le démon (host/src/keyboard.rs et screens.rs, via #[path]).
+x11rb = { version = "0.13", features = ["xtest"] }
+xkbcommon = "0.7"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde_json = "1"
+dirs = "5"
+# Capture : PNG renvoyé à l'agent.
+png = "0.17"
+base64 = "0.22"

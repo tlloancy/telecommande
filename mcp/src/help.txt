@@ -1,0 +1,9 @@
+telecommande-mcp : serveur MCP local (stdio) pour piloter le bureau X11.
+
+  telecommande-mcp [--idle-timeout SECONDES]   serveur stdio (accord redemandé après 600 s d'inactivité)
+  telecommande-mcp stop                        arrêt d'urgence (à lier à un raccourci clavier)
+  telecommande-mcp resume                      lève l'arrêt d'urgence
+  telecommande-mcp status                      état + chemin du journal
+
+Variables : TELECOMMANDE_MCP_APPROVE_CMD (commande d'accord, code 0 = oui),
+            TELECOMMANDE_MCP_ASSUME_YES=1 (saute la confirmation).

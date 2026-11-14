@@ -23,6 +23,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use tower_http::services::ServeDir;
 
 pub struct Config {
@@ -138,6 +139,30 @@ enum ClientCmd {
     Stop,
 }
 
+/// Un téléphone qui change de borne Wi-Fi disparaît sans fermer le WebSocket : sans ping, la
+/// session (capture + encodage) tournerait jusqu'au délai TCP, souvent plusieurs minutes.
+const PING_EVERY: Duration = Duration::from_secs(10);
+const DEAD_AFTER: Duration = Duration::from_secs(30);
+
+struct Heartbeat {
+    last_seen: Instant,
+}
+
+impl Heartbeat {
+    fn new(now: Instant) -> Self {
+        Self { last_seen: now }
+    }
+
+    /// Tout message reçu (texte, pong...) prouve que le téléphone est là.
+    fn seen(&mut self, now: Instant) {
+        self.last_seen = now;
+    }
+
+    fn dead(&self, now: Instant) -> bool {
+        now.duration_since(self.last_seen) > DEAD_AFTER
+    }
+}
+
 async fn handle_socket(sock: WebSocket, encoder: Encoder, opts: CaptureOpts) {
     let (mut sink, mut stream) = sock.split();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -149,8 +174,19 @@ async fn handle_socket(sock: WebSocket, encoder: Encoder, opts: CaptureOpts) {
         .spawn(move || run_session(encoder, opts, tx, tx_fail, cmd_rx))
         .expect("thread session");
 
+    let mut beat = Heartbeat::new(Instant::now());
+    let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + PING_EVERY, PING_EVERY);
     loop {
         tokio::select! {
+            _ = ticker.tick() => {
+                if beat.dead(Instant::now()) {
+                    tracing::info!("session abandonnée : plus aucun signe du téléphone");
+                    break;
+                }
+                if sink.send(Message::Ping(Vec::new())).await.is_err() {
+                    break;
+                }
+            }
             outgoing = rx.recv() => {
                 let Some(signal) = outgoing else { break };
                 if sink.send(Message::Text(signal_text(&signal).into())).await.is_err() {
@@ -158,6 +194,7 @@ async fn handle_socket(sock: WebSocket, encoder: Encoder, opts: CaptureOpts) {
                 }
             }
             incoming = stream.next() => {
+                beat.seen(Instant::now());
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
                         if cmd_tx.send(ClientCmd::Text(text)).is_err() {
@@ -217,4 +254,26 @@ fn signal_text(signal: &HostSignal) -> String {
 
 fn error_text(message: &str) -> String {
     serde_json::json!({"kind": "error", "message": message}).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn silent_client_is_dead_only_after_the_delay() {
+        let t0 = Instant::now();
+        let beat = Heartbeat::new(t0);
+        assert!(!beat.dead(t0 + Duration::from_secs(29)));
+        assert!(beat.dead(t0 + Duration::from_secs(31)));
+    }
+
+    #[test]
+    fn any_message_resets_the_delay() {
+        let t0 = Instant::now();
+        let mut beat = Heartbeat::new(t0);
+        beat.seen(t0 + Duration::from_secs(25));
+        assert!(!beat.dead(t0 + Duration::from_secs(50)));
+        assert!(beat.dead(t0 + Duration::from_secs(56)));
+    }
 }
